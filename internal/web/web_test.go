@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -248,5 +249,52 @@ func TestSignedOutPostsRedirect(t *testing.T) {
 	}
 	if res := do(t, h, http.MethodPost, "/logout", "", url.Values{}); res.code != http.StatusSeeOther {
 		t.Errorf("logout = %d", res.code)
+	}
+}
+
+func TestSignupRateLimitedPerIP(t *testing.T) {
+	_, h := setup(t)
+	post := func(i int, ip string) int {
+		form := url.Values{"email": {fmt.Sprintf("user%d@example.com", i)}, "password": {pw}}
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/signup", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Forwarded-For", ip)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for i := range web.SignupsPerHour {
+		if code := post(i, "192.0.2.1"); code != http.StatusSeeOther {
+			t.Fatalf("signup %d = %d", i, code)
+		}
+	}
+	if code := post(100, "192.0.2.1"); code != http.StatusTooManyRequests {
+		t.Errorf("over limit = %d", code)
+	}
+	if code := post(102, "203.0.113.9, 192.0.2.1"); code != http.StatusTooManyRequests {
+		t.Errorf("forged left entry escaped the limit: %d", code)
+	}
+	if code := post(101, "198.51.100.7"); code != http.StatusSeeOther {
+		t.Errorf("other ip = %d", code)
+	}
+}
+
+func TestClientIP(t *testing.T) {
+	cases := map[string]struct{ xff, remote, want string }{
+		"no header":      {"", "192.0.2.5:4000", "192.0.2.5"},
+		"single":         {"198.51.100.7", "10.0.0.2:4000", "198.51.100.7"},
+		"rightmost wins": {"203.0.113.9, 198.51.100.7", "10.0.0.2:4000", "198.51.100.7"},
+		"garbage":        {"not-an-ip", "192.0.2.5:4000", "192.0.2.5"},
+	}
+	for name, tc := range cases {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+		req.RemoteAddr = tc.remote
+		if tc.xff != "" {
+			req.Header.Set("X-Forwarded-For", tc.xff)
+		}
+		got, err := web.ClientIP(req)
+		if err != nil || got != tc.want {
+			t.Errorf("%s: got %q %v, want %q", name, got, err, tc.want)
+		}
 	}
 }

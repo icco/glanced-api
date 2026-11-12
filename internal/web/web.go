@@ -5,18 +5,24 @@ import (
 	"embed"
 	"errors"
 	"html/template"
+	"net"
 	"net/http"
 	"net/mail"
+	"net/netip"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httprate"
 	"go.icco.me/gutil/logging"
 	"gorm.io/gorm"
 
 	"go.icco.me/glanced-api/internal/auth"
 	"go.icco.me/glanced-api/internal/db"
 )
+
+// SignupsPerHour is how many accounts one client IP may create per hour.
+const SignupsPerHour = 5
 
 // CookieName is the session cookie set by the web pages.
 const CookieName = "glanced_session"
@@ -58,7 +64,7 @@ func New(g *gorm.DB) http.Handler {
 	r.Get("/signup", func(w http.ResponseWriter, r *http.Request) {
 		h.render(w, r, http.StatusOK, "signup", view{Title: "Create account"})
 	})
-	r.Post("/signup", h.signup)
+	r.With(httprate.LimitBy(SignupsPerHour, time.Hour, ClientIP, httprate.WithLimitHandler(tooMany))).Post("/signup", h.signup)
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		h.render(w, r, http.StatusOK, "login", view{Title: "Sign in"})
 	})
@@ -265,4 +271,25 @@ func (h *handler) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	clearCookie(w)
 	http.Redirect(w, r, "/signup", http.StatusSeeOther)
+}
+
+func tooMany(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "Too many accounts created from this address. Try again in an hour.", http.StatusTooManyRequests)
+}
+
+// ClientIP keys rate limits by the rightmost X-Forwarded-For entry, which the
+// fronting proxy (Caddy) sets from the connection, falling back to RemoteAddr.
+// Entries to its left come from the client and are ignored.
+func ClientIP(r *http.Request) (string, error) {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if ip, err := netip.ParseAddr(strings.TrimSpace(parts[len(parts)-1])); err == nil {
+			return httprate.CanonicalizeIP(ip.String()), nil
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	return httprate.CanonicalizeIP(host), nil
 }
