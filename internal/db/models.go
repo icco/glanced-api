@@ -16,6 +16,7 @@ type Session struct {
 	TokenHash []byte    `gorm:"primaryKey"`
 	UserID    string    `gorm:"index;not null;type:uuid"`
 	ExpiresAt time.Time `gorm:"not null"`
+	UserAgent string    `gorm:"not null;default:''"`
 	CreatedAt time.Time
 }
 

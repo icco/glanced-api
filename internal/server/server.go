@@ -63,7 +63,7 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		fail(w, r, http.StatusBadRequest, "invalid json")
 		return
 	}
-	token, err := auth.Login(r.Context(), h.g, in.Email, in.Password)
+	token, err := auth.LoginAgent(r.Context(), h.g, in.Email, in.Password, r.UserAgent())
 	if errors.Is(err, auth.ErrInvalidCredentials) {
 		fail(w, r, http.StatusUnauthorized, "invalid credentials")
 		return
