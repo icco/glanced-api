@@ -142,3 +142,27 @@ func TestLogoutRevokesSession(t *testing.T) {
 		t.Errorf("code = %d", rec.Code)
 	}
 }
+
+func TestUnknownEmailTakesAsLongAsWrongPassword(t *testing.T) {
+	g := dbtest.New(t)
+	ctx := context.Background()
+	if _, err := auth.CreateUser(ctx, g, "ada@example.com", pw); err != nil {
+		t.Fatal(err)
+	}
+	timeIt := func(email string) time.Duration {
+		best := time.Duration(1 << 62)
+		for range 3 {
+			start := time.Now()
+			if _, err := auth.Login(ctx, g, email, "wrong password!"); !errors.Is(err, auth.ErrInvalidCredentials) {
+				t.Fatalf("%s: %v", email, err)
+			}
+			best = min(best, time.Since(start))
+		}
+		return best
+	}
+	wrong := timeIt("ada@example.com")
+	unknown := timeIt("bob@example.com")
+	if unknown < wrong/2 {
+		t.Errorf("unknown email took %v, wrong password %v", unknown, wrong)
+	}
+}
