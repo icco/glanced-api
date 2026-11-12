@@ -120,12 +120,15 @@ func (h *handler) pull(w http.ResponseWriter, r *http.Request) {
 		fail(w, r, http.StatusBadRequest, "invalid cursor")
 		return
 	}
-	limit, err := intParam(r, "limit", defaultPullLimit)
+	limit := defaultPullLimit
+	if s := r.URL.Query().Get("limit"); s != "" {
+		limit, err = strconv.Atoi(s)
+	}
 	if err != nil {
 		fail(w, r, http.StatusBadRequest, "invalid limit")
 		return
 	}
-	p, err := syncer.Pull(r.Context(), h.g, auth.UserID(r.Context()), cursor, int(min(limit, syncer.MaxPullLimit)))
+	p, err := syncer.Pull(r.Context(), h.g, auth.UserID(r.Context()), cursor, limit)
 	if err != nil {
 		internal(w, r, err)
 		return
