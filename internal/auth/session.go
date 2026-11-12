@@ -28,6 +28,9 @@ var ErrWeakPassword = errors.New("password must be at least 12 characters")
 // ErrInvalidCredentials is returned for an unknown email or a wrong password.
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
+// ErrBadSessionID is returned for a session ID that is not hex.
+var ErrBadSessionID = errors.New("bad session id")
+
 // ErrEmailTaken is returned when an account already uses the email.
 var ErrEmailTaken = errors.New("an account with that email already exists")
 

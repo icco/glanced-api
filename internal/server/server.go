@@ -16,6 +16,7 @@ import (
 	"go.icco.me/glanced-api/internal/auth"
 	"go.icco.me/glanced-api/internal/db"
 	"go.icco.me/glanced-api/internal/syncer"
+	"go.icco.me/glanced-api/internal/web"
 )
 
 const (
@@ -42,6 +43,7 @@ func New(g *gorm.DB, log *zap.Logger) http.Handler {
 		r.Post("/v1/sync/push", h.push)
 		r.Get("/v1/sync/pull", h.pull)
 	})
+	r.Mount("/", web.New(g))
 	return r
 }
 

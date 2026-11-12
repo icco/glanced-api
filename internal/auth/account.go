@@ -64,7 +64,7 @@ func ListSessions(ctx context.Context, g *gorm.DB, userID, currentToken string) 
 func RevokeSession(ctx context.Context, g *gorm.DB, userID, id string) error {
 	h, err := hex.DecodeString(id)
 	if err != nil {
-		return fmt.Errorf("bad session id: %w", err)
+		return fmt.Errorf("%w: %w", ErrBadSessionID, err)
 	}
 	if err := g.WithContext(ctx).Where("user_id = ? AND token_hash = ?", userID, h).Delete(&db.Session{}).Error; err != nil {
 		return fmt.Errorf("revoke session: %w", err)

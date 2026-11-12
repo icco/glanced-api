@@ -8,7 +8,7 @@ Sync API for [Glanced](https://github.com/icco/glanced), a digital take on Analo
 docker run -p 8080:8080 -e DATABASE_URL=postgres://... ghcr.io/icco/glanced-api:main
 ```
 
-Create a user (there is no public sign-up). The password is read from stdin:
+Create an account at `/signup`, or from the command line (the password is read from stdin):
 
 ```bash
 printf '%s\n' 'correct horse battery staple' | docker run -i -e DATABASE_URL=postgres://... ghcr.io/icco/glanced-api:main /app/bin/glanced-api user create --email ada@example.com
@@ -23,6 +23,7 @@ printf '%s\n' 'correct horse battery staple' | docker run -i -e DATABASE_URL=pos
 
 ## API
 
+- Web pages: `/signup`, `/login`, and `/account` (change password, sign out devices, delete account)
 - `POST /v1/auth/login` `{email, password}` returns `{token}`
 - `POST /v1/auth/logout`
 - `POST /v1/sync/push` `{device_id, cards, lines}` returns `{accepted}`

@@ -1,0 +1,8 @@
+{{define "content"}}
+<form method="post" action="/signup">
+<label>Email <input type="email" name="email" value="{{.Email}}" required autocomplete="email"></label>
+<label>Password (at least 12 characters) <input type="password" name="password" required minlength="12" autocomplete="new-password"></label>
+<button type="submit">Create account</button>
+</form>
+<p>Already have an account? <a href="/login">Sign in</a>.</p>
+{{end}}
