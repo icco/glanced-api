@@ -1,4 +1,4 @@
-FROM golang:1.27-bookworm AS builder
+FROM golang:1.27-trixie AS builder
 WORKDIR /app
 ENV GOOS=linux
 ENV CGO_ENABLED=0
@@ -7,7 +7,7 @@ RUN go mod download
 COPY . .
 RUN go build -o /app/bin/glanced-api ./cmd/glanced-api
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 LABEL org.opencontainers.image.source=https://github.com/icco/glanced-api
 LABEL org.opencontainers.image.description="Sync API for Glanced Analog cards."
 LABEL org.opencontainers.image.licenses=MIT
