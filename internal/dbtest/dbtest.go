@@ -20,6 +20,8 @@ var (
 	once    sync.Once
 	baseURL string
 	errInit error
+	pg      *embeddedpostgres.EmbeddedPostgres
+	dataDir string
 )
 
 func start() {
@@ -34,6 +36,7 @@ func start() {
 		return
 	}
 	dir, err := os.MkdirTemp("", "glanced-pg-")
+	dataDir = dir
 	if err != nil {
 		errInit = err
 		return
@@ -46,16 +49,35 @@ func start() {
 		Encoding("UTF8").
 		Database("glanced").
 		Logger(nil)
-	pg := embeddedpostgres.NewDatabase(cfg)
-	if err := pg.Start(); err != nil {
+	db := embeddedpostgres.NewDatabase(cfg)
+	if err := db.Start(); err != nil {
 		errInit = err
 		return
 	}
+	pg = db
 	baseURL = fmt.Sprintf("postgres://postgres:postgres@127.0.0.1:%d/glanced?sslmode=disable", port)
 }
 
+// Main runs the package's tests, then stops the embedded Postgres and removes
+// its files. Call it from TestMain in every package that uses New.
+func Main(m *testing.M) {
+	code := m.Run()
+	if pg != nil {
+		if err := pg.Stop(); err != nil {
+			fmt.Fprintln(os.Stderr, "stop embedded postgres:", err)
+			code = 1
+		}
+	}
+	if dataDir != "" {
+		if err := os.RemoveAll(dataDir); err != nil {
+			fmt.Fprintln(os.Stderr, "remove postgres dir:", err)
+		}
+	}
+	os.Exit(code)
+}
+
 // New returns a migrated database with every table emptied. The embedded
-// Postgres starts once per test binary and is left for the OS to reap.
+// Postgres starts once per test binary; Main stops it.
 func New(t *testing.T) *gorm.DB {
 	t.Helper()
 	once.Do(start)

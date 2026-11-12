@@ -5,9 +5,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"go.icco.me/glanced-api/internal/db"
 )
@@ -21,8 +24,10 @@ type SessionInfo struct {
 }
 
 func truncate(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
+	s = strings.ToValidUTF8(s, "")
+	for len(s) > n {
+		_, size := utf8.DecodeLastRuneInString(s)
+		s = s[:len(s)-size]
 	}
 	return s
 }
@@ -112,6 +117,10 @@ func DeleteUser(ctx context.Context, g *gorm.DB, userID, pw string) error {
 		return err
 	}
 	return g.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var locked db.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", userID).First(&locked).Error; err != nil {
+			return fmt.Errorf("lock user: %w", err)
+		}
 		for _, m := range []any{&db.Line{}, &db.Card{}, &db.Session{}} {
 			if err := tx.Where("user_id = ?", userID).Delete(m).Error; err != nil {
 				return fmt.Errorf("delete %T: %w", m, err)

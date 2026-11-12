@@ -101,6 +101,10 @@ func (h *handler) push(w http.ResponseWriter, r *http.Request) {
 		render.JSON(logging.FromContext(r.Context()), w, http.StatusBadRequest, map[string]string{"error": "invalid row", "id": inv.ID, "reason": inv.Reason})
 		return
 	}
+	if errors.Is(err, syncer.ErrUnknownUser) {
+		fail(w, r, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	if err != nil {
 		internal(w, r, err)
 		return

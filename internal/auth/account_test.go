@@ -3,7 +3,9 @@ package auth_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"go.icco.me/glanced-api/internal/auth"
 	"go.icco.me/glanced-api/internal/db"
@@ -129,5 +131,22 @@ func TestDeleteUserRemovesEverything(t *testing.T) {
 	g.Model(&db.User{}).Count(&users)
 	if cards != 1 || lines != 1 || users != 1 {
 		t.Errorf("left cards=%d lines=%d users=%d, want only bob's", cards, lines, users)
+	}
+}
+
+func TestLoginAgentTruncatesOnRuneBoundary(t *testing.T) {
+	g := dbtest.New(t)
+	ctx := context.Background()
+	if _, err := auth.CreateUser(ctx, g, "ada@example.com", pw); err != nil {
+		t.Fatal(err)
+	}
+	ua := strings.Repeat("a", 199) + "é" + "\xff"
+	if _, err := auth.LoginAgent(ctx, g, "ada@example.com", pw, ua); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	var s db.Session
+	g.First(&s)
+	if !utf8.ValidString(s.UserAgent) || len(s.UserAgent) > 200 {
+		t.Errorf("user agent = %q", s.UserAgent)
 	}
 }

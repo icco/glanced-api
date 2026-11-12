@@ -47,7 +47,7 @@ func storedL1(t *testing.T, g *gorm.DB) db.Line {
 }
 
 func TestPushNewerWins(t *testing.T) {
-	g := dbtest.New(t)
+	g := newDB(t)
 	push(t, g, alice, nil, []db.Line{line("l1", "old", 100, "a")})
 	if n := push(t, g, alice, nil, []db.Line{line("l1", "new", 200, "a")}); n != 1 {
 		t.Errorf("accepted = %d", n)
@@ -58,7 +58,7 @@ func TestPushNewerWins(t *testing.T) {
 }
 
 func TestPushOlderLoses(t *testing.T) {
-	g := dbtest.New(t)
+	g := newDB(t)
 	push(t, g, alice, nil, []db.Line{line("l1", "keep", 200, "a")})
 	if n := push(t, g, alice, nil, []db.Line{line("l1", "stale", 100, "a")}); n != 0 {
 		t.Errorf("accepted = %d", n)
@@ -69,7 +69,7 @@ func TestPushOlderLoses(t *testing.T) {
 }
 
 func TestPushTieBreaksOnDeviceID(t *testing.T) {
-	g := dbtest.New(t)
+	g := newDB(t)
 	push(t, g, alice, nil, []db.Line{line("l1", "from b", 100, "b")})
 	push(t, g, alice, nil, []db.Line{line("l1", "from a", 100, "a")})
 	if got := storedL1(t, g).Text; got != "from b" {
@@ -82,7 +82,7 @@ func TestPushTieBreaksOnDeviceID(t *testing.T) {
 }
 
 func TestPushIdempotent(t *testing.T) {
-	g := dbtest.New(t)
+	g := newDB(t)
 	batch := []db.Line{line("l1", "x", 100, "a"), line("l2", "y", 100, "a")}
 	push(t, g, alice, []db.Card{card("next", 100)}, batch)
 	s1 := storedL1(t, g).ServerSeq
@@ -95,7 +95,7 @@ func TestPushIdempotent(t *testing.T) {
 }
 
 func TestPushIsolatedByUser(t *testing.T) {
-	g := dbtest.New(t)
+	g := newDB(t)
 	push(t, g, alice, []db.Card{{ID: "next", Kind: "next", CardSignal: 1, UpdatedAtMs: 100, DeviceID: "a"}}, nil)
 	push(t, g, bob, []db.Card{{ID: "next", Kind: "next", CardSignal: 2, UpdatedAtMs: 50, DeviceID: "a"}}, nil)
 	for user, want := range map[string]int{alice: 1, bob: 2} {
@@ -110,7 +110,7 @@ func TestPushIsolatedByUser(t *testing.T) {
 }
 
 func TestTombstoneSyncs(t *testing.T) {
-	g := dbtest.New(t)
+	g := newDB(t)
 	push(t, g, alice, nil, []db.Line{line("l1", "x", 100, "a")})
 	del := line("l1", "x", 200, "a")
 	del.Deleted = true
@@ -125,7 +125,7 @@ func TestTombstoneSyncs(t *testing.T) {
 }
 
 func TestPullPagesAcrossTables(t *testing.T) {
-	g := dbtest.New(t)
+	g := newDB(t)
 	want := map[string]bool{}
 	for i := range 8 {
 		id := fmt.Sprintf("l%d", i)
@@ -198,7 +198,7 @@ func TestValidate(t *testing.T) {
 }
 
 func TestPushInvalidStoresNothing(t *testing.T) {
-	g := dbtest.New(t)
+	g := newDB(t)
 	_, err := syncer.Push(context.Background(), g, alice, nil, []db.Line{line("l1", "x", 1, "a"), {ID: "bad", Signal: "nope", DeviceID: "a"}})
 	var inv *syncer.InvalidRowError
 	if !errors.As(err, &inv) || inv.ID != "bad" {
@@ -216,4 +216,27 @@ func TestInvalidRowErrorMessage(t *testing.T) {
 	if got := err.Error(); got != `invalid row "l9": position must be >= 0` {
 		t.Errorf("Error() = %q", got)
 	}
+}
+
+func TestPushForDeletedUserFails(t *testing.T) {
+	g := dbtest.New(t)
+	if _, err := syncer.Push(context.Background(), g, alice, nil, []db.Line{line("l1", "x", 1, "a")}); !errors.Is(err, syncer.ErrUnknownUser) {
+		t.Fatalf("err = %v", err)
+	}
+	var n int64
+	g.Model(&db.Line{}).Count(&n)
+	if n != 0 {
+		t.Errorf("stored %d lines for a missing user", n)
+	}
+}
+
+func newDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	g := dbtest.New(t)
+	for i, id := range []string{alice, bob} {
+		if err := g.Create(&db.User{ID: id, Email: fmt.Sprintf("user%d@example.com", i), PasswordHash: "x"}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	return g
 }
