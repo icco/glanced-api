@@ -274,7 +274,7 @@ func (h *handler) deleteAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func tooMany(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "Too many accounts created from this address. Try again in an hour.", http.StatusTooManyRequests)
+	http.Error(w, "Too many sign-up attempts from this address. Try again in an hour.", http.StatusTooManyRequests)
 }
 
 // ClientIP keys rate limits by the rightmost X-Forwarded-For entry, which the

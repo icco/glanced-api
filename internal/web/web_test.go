@@ -268,6 +268,14 @@ func TestSignupRateLimitedPerIP(t *testing.T) {
 			t.Fatalf("signup %d = %d", i, code)
 		}
 	}
+	limited := httptest.NewRecorder()
+	limitedReq := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/signup", strings.NewReader("email=x%40example.com&password=correct+horse+battery+staple"))
+	limitedReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	limitedReq.Header.Set("X-Forwarded-For", "192.0.2.1")
+	h.ServeHTTP(limited, limitedReq)
+	if !strings.Contains(limited.Body.String(), "Too many sign-up attempts") {
+		t.Errorf("limit message = %q", limited.Body.String())
+	}
 	if code := post(100, "192.0.2.1"); code != http.StatusTooManyRequests {
 		t.Errorf("over limit = %d", code)
 	}
