@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -59,3 +60,13 @@ func VerifyPassword(encoded, pw string) (bool, error) {
 	got := argon2.IDKey([]byte(pw), salt, t, mem, p, uint32(len(want))) //nolint:gosec // hash length is 32
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }
+
+// dummyHash is verified against for unknown emails, so login takes as long
+// whether or not the account exists.
+var dummyHash = sync.OnceValue(func() string {
+	h, err := HashPassword("glanced dummy password")
+	if err != nil {
+		panic(fmt.Sprintf("hash dummy password: %v", err))
+	}
+	return h
+})
