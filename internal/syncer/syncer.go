@@ -22,10 +22,6 @@ type Page struct {
 	More   bool
 }
 
-func wins(inAt int64, inDev string, curAt int64, curDev string) bool {
-	return inAt > curAt || (inAt == curAt && inDev > curDev)
-}
-
 // Push stores each row that is newer than the stored copy and returns how
 // many were accepted. Nothing is stored if any row is invalid.
 func Push(ctx context.Context, g *gorm.DB, userID string, cards []db.Card, lines []db.Line) (int, error) {
@@ -44,35 +40,19 @@ func Push(ctx context.Context, g *gorm.DB, userID string, cards []db.Card, lines
 		}
 		for _, c := range cards {
 			c.UserID = userID
-			var cur db.Card
-			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND id = ?", userID, c.ID).First(&cur).Error
-			ok, err := shouldWrite(err, func() bool { return wins(c.UpdatedAtMs, c.DeviceID, cur.UpdatedAtMs, cur.DeviceID) })
-			if err != nil || !ok {
-				if err != nil {
-					return fmt.Errorf("load card %q: %w", c.ID, err)
-				}
-				continue
-			}
-			if err := upsert(tx, &c, &c.ServerSeq); err != nil {
+			n, err := upsert(tx, "cards", &c, &c.ServerSeq)
+			if err != nil {
 				return fmt.Errorf("store card %q: %w", c.ID, err)
 			}
-			accepted++
+			accepted += n
 		}
 		for _, l := range lines {
 			l.UserID = userID
-			var cur db.Line
-			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND id = ?", userID, l.ID).First(&cur).Error
-			ok, err := shouldWrite(err, func() bool { return wins(l.UpdatedAtMs, l.DeviceID, cur.UpdatedAtMs, cur.DeviceID) })
-			if err != nil || !ok {
-				if err != nil {
-					return fmt.Errorf("load line %q: %w", l.ID, err)
-				}
-				continue
-			}
-			if err := upsert(tx, &l, &l.ServerSeq); err != nil {
+			n, err := upsert(tx, "lines", &l, &l.ServerSeq)
+			if err != nil {
 				return fmt.Errorf("store line %q: %w", l.ID, err)
 			}
-			accepted++
+			accepted += n
 		}
 		return nil
 	})
@@ -82,21 +62,41 @@ func Push(ctx context.Context, g *gorm.DB, userID string, cards []db.Card, lines
 	return accepted, nil
 }
 
-func shouldWrite(loadErr error, newer func() bool) (bool, error) {
-	if errors.Is(loadErr, gorm.ErrRecordNotFound) {
-		return true, nil
+// upsert reserves a sequence number for a new row and stores it.
+func upsert(tx *gorm.DB, table string, row any, seq *int64) (int, error) {
+	if err := reserve(tx, seq); err != nil {
+		return 0, err
 	}
-	if loadErr != nil {
-		return false, loadErr
-	}
-	return newer(), nil
+	return store(tx, table, row)
 }
 
-func upsert(tx *gorm.DB, row any, seq *int64) error {
-	if err := tx.Raw("SELECT nextval('glanced_seq')").Scan(seq).Error; err != nil {
-		return err
+func reserve(tx *gorm.DB, seq *int64) error {
+	return tx.Raw("SELECT nextval('glanced_seq')").Scan(seq).Error
+}
+
+var updatable = map[string][]string{
+	"cards": {"kind", "date", "card_signal", "updated_at", "device_id", "deleted"},
+	"lines": {"card_id", "position", "text", "signal", "migrated_to", "updated_at", "device_id", "deleted"},
+}
+
+// store inserts row with its reserved sequence, or replaces the stored copy
+// only when row is newer by updated_at, then bytewise device_id. The check
+// and a fresh sequence number are taken under the conflicting row's lock, so
+// neither a concurrent first insert nor a delayed writer can store an older
+// row or move server_seq backwards.
+func store(tx *gorm.DB, table string, row any) (int, error) {
+	set := clause.AssignmentColumns(updatable[table])
+	set = append(set, clause.Assignment{Column: clause.Column{Name: "server_seq"}, Value: gorm.Expr("nextval('glanced_seq')")})
+	newer := fmt.Sprintf(`excluded.updated_at > %[1]s.updated_at OR (excluded.updated_at = %[1]s.updated_at AND excluded.device_id COLLATE "C" > %[1]s.device_id COLLATE "C")`, table)
+	res := tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "id"}},
+		DoUpdates: set,
+		Where:     clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: newer}}},
+	}).Create(row)
+	if res.Error != nil {
+		return 0, res.Error
 	}
-	return tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(row).Error
+	return int(res.RowsAffected), nil
 }
 
 // MaxPullLimit caps how many rows one pull returns.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 
 	"gorm.io/gorm"
@@ -239,4 +240,44 @@ func newDB(t *testing.T) *gorm.DB {
 		}
 	}
 	return g
+}
+
+func TestConcurrentFirstPushKeepsNewest(t *testing.T) {
+	g := newDB(t)
+	for round := range 20 {
+		id := fmt.Sprintf("race%d", round)
+		var wg sync.WaitGroup
+		errs := make(chan error, 2)
+		for _, at := range []int64{100, 200} {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := syncer.Push(context.Background(), g, alice, nil, []db.Line{line(id, fmt.Sprintf("at %d", at), at, "a")})
+				errs <- err
+			}()
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			if err != nil {
+				t.Fatalf("round %d: %v", round, err)
+			}
+		}
+		var l db.Line
+		if err := g.Where("user_id = ? AND id = ?", alice, id).First(&l).Error; err != nil {
+			t.Fatal(err)
+		}
+		if l.UpdatedAtMs != 200 {
+			t.Fatalf("round %d: stored updated_at %d, want 200", round, l.UpdatedAtMs)
+		}
+	}
+}
+
+func TestDeviceTieBreakIsBytewise(t *testing.T) {
+	g := newDB(t)
+	push(t, g, alice, nil, []db.Line{line("l1", "from B", 100, "B")})
+	push(t, g, alice, nil, []db.Line{line("l1", "from a", 100, "a")})
+	if got := storedL1(t, g).Text; got != "from a" {
+		t.Errorf("text = %q, want bytewise winner \"a\"", got)
+	}
 }
