@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -62,11 +61,14 @@ func VerifyPassword(encoded, pw string) (bool, error) {
 }
 
 // dummyHash is verified against for unknown emails, so login takes as long
-// whether or not the account exists.
-var dummyHash = sync.OnceValue(func() string {
-	h, err := HashPassword("glanced dummy password")
+// whether or not the account exists. It is built at startup so the first
+// unknown-email login does not pay for an extra hash.
+var dummyHash = mustHash("glanced dummy password")
+
+func mustHash(pw string) string {
+	h, err := HashPassword(pw)
 	if err != nil {
 		panic(fmt.Sprintf("hash dummy password: %v", err))
 	}
 	return h
-})
+}

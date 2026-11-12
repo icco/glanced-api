@@ -87,7 +87,7 @@ func LoginAgent(ctx context.Context, g *gorm.DB, email, pw, userAgent string) (s
 	var u db.User
 	err := g.WithContext(ctx).Where("email = ?", normalizeEmail(email)).First(&u).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		if _, verr := VerifyPassword(dummyHash(), pw); verr != nil {
+		if _, verr := VerifyPassword(dummyHash, pw); verr != nil {
 			return "", verr
 		}
 		return "", ErrInvalidCredentials
