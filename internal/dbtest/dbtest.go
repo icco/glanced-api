@@ -42,7 +42,8 @@ func start() {
 		Port(uint32(port)). //nolint:gosec // port comes from the OS and fits in uint32
 		RuntimePath(filepath.Join(dir, "runtime")).
 		DataPath(filepath.Join(dir, "data")).
-		BinariesPath(filepath.Join(os.TempDir(), "glanced-pg-bin")).
+		BinariesPath(filepath.Join(dir, "bin")).
+		Encoding("UTF8").
 		Database("glanced").
 		Logger(nil)
 	pg := embeddedpostgres.NewDatabase(cfg)
