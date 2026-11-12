@@ -1,0 +1,11 @@
+version: "3"
+tasks:
+  build:
+    cmds:
+      - go build -o bin/glanced-api ./cmd/glanced-api
+  test:
+    cmds:
+      - go test -race -cover ./...
+  run:
+    cmds:
+      - go run ./cmd/glanced-api serve
