@@ -23,7 +23,7 @@ var (
 )
 
 func start() {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		errInit = err
 		return
@@ -75,4 +75,11 @@ func New(t *testing.T) *gorm.DB {
 		t.Fatalf("truncate: %v", err)
 	}
 	return g
+}
+
+// URL returns the connection string of the shared test database.
+func URL(t *testing.T) string {
+	t.Helper()
+	New(t)
+	return baseURL
 }

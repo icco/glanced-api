@@ -81,7 +81,7 @@ func TestMiddlewareSetsUserID(t *testing.T) {
 	}
 	var seen string
 	inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { seen = auth.UserID(r.Context()) })
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	rec := httptest.NewRecorder()
 	auth.Middleware(g)(inner).ServeHTTP(rec, req)
@@ -93,7 +93,7 @@ func TestMiddlewareSetsUserID(t *testing.T) {
 func TestMiddlewareRejectsMissing(t *testing.T) {
 	g := dbtest.New(t)
 	rec := httptest.NewRecorder()
-	auth.Middleware(g)(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	auth.Middleware(g)(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil))
 	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), `"unauthorized"`) {
 		t.Errorf("code = %d body = %s", rec.Code, rec.Body)
 	}
@@ -112,7 +112,7 @@ func TestMiddlewareRejectsExpired(t *testing.T) {
 	if err := g.Model(&db.Session{}).Where("1 = 1").Update("expires_at", time.Now().Add(-time.Hour)).Error; err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	rec := httptest.NewRecorder()
 	auth.Middleware(g)(http.NotFoundHandler()).ServeHTTP(rec, req)
@@ -134,7 +134,7 @@ func TestLogoutRevokesSession(t *testing.T) {
 	if err := auth.Logout(ctx, g, tok); err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	rec := httptest.NewRecorder()
 	auth.Middleware(g)(http.NotFoundHandler()).ServeHTTP(rec, req)

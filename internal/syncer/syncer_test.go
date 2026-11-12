@@ -37,10 +37,10 @@ func push(t *testing.T, g *gorm.DB, user string, cards []db.Card, lines []db.Lin
 	return n
 }
 
-func storedLine(t *testing.T, g *gorm.DB, user, id string) db.Line {
+func storedL1(t *testing.T, g *gorm.DB) db.Line {
 	t.Helper()
 	var l db.Line
-	if err := g.Where("user_id = ? AND id = ?", user, id).First(&l).Error; err != nil {
+	if err := g.Where("user_id = ? AND id = ?", alice, "l1").First(&l).Error; err != nil {
 		t.Fatal(err)
 	}
 	return l
@@ -52,7 +52,7 @@ func TestPushNewerWins(t *testing.T) {
 	if n := push(t, g, alice, nil, []db.Line{line("l1", "new", 200, "a")}); n != 1 {
 		t.Errorf("accepted = %d", n)
 	}
-	if got := storedLine(t, g, alice, "l1").Text; got != "new" {
+	if got := storedL1(t, g).Text; got != "new" {
 		t.Errorf("text = %q", got)
 	}
 }
@@ -63,7 +63,7 @@ func TestPushOlderLoses(t *testing.T) {
 	if n := push(t, g, alice, nil, []db.Line{line("l1", "stale", 100, "a")}); n != 0 {
 		t.Errorf("accepted = %d", n)
 	}
-	if got := storedLine(t, g, alice, "l1").Text; got != "keep" {
+	if got := storedL1(t, g).Text; got != "keep" {
 		t.Errorf("text = %q", got)
 	}
 }
@@ -72,11 +72,11 @@ func TestPushTieBreaksOnDeviceID(t *testing.T) {
 	g := dbtest.New(t)
 	push(t, g, alice, nil, []db.Line{line("l1", "from b", 100, "b")})
 	push(t, g, alice, nil, []db.Line{line("l1", "from a", 100, "a")})
-	if got := storedLine(t, g, alice, "l1").Text; got != "from b" {
+	if got := storedL1(t, g).Text; got != "from b" {
 		t.Errorf("text = %q", got)
 	}
 	push(t, g, alice, nil, []db.Line{line("l1", "from c", 100, "c")})
-	if got := storedLine(t, g, alice, "l1").Text; got != "from c" {
+	if got := storedL1(t, g).Text; got != "from c" {
 		t.Errorf("text = %q", got)
 	}
 }
@@ -85,11 +85,11 @@ func TestPushIdempotent(t *testing.T) {
 	g := dbtest.New(t)
 	batch := []db.Line{line("l1", "x", 100, "a"), line("l2", "y", 100, "a")}
 	push(t, g, alice, []db.Card{card("next", 100)}, batch)
-	s1 := storedLine(t, g, alice, "l1").ServerSeq
+	s1 := storedL1(t, g).ServerSeq
 	if n := push(t, g, alice, []db.Card{card("next", 100)}, batch); n != 0 {
 		t.Errorf("second push accepted = %d", n)
 	}
-	if s2 := storedLine(t, g, alice, "l1").ServerSeq; s2 != s1 {
+	if s2 := storedL1(t, g).ServerSeq; s2 != s1 {
 		t.Errorf("server_seq changed %d -> %d", s1, s2)
 	}
 }
@@ -208,5 +208,12 @@ func TestPushInvalidStoresNothing(t *testing.T) {
 	g.Model(&db.Line{}).Count(&n)
 	if n != 0 {
 		t.Errorf("stored %d lines", n)
+	}
+}
+
+func TestInvalidRowErrorMessage(t *testing.T) {
+	err := &syncer.InvalidRowError{ID: "l9", Reason: "position must be >= 0"}
+	if got := err.Error(); got != `invalid row "l9": position must be >= 0` {
+		t.Errorf("Error() = %q", got)
 	}
 }
