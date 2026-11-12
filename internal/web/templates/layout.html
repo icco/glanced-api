@@ -1,0 +1,31 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} - Glanced</title>
+<style>
+body { font-family: "Avenir Next", Avenir, -apple-system, system-ui, sans-serif; font-size: 16px; line-height: 1.5; color: #2b2b2b; background: #faf8f3; margin: 0; }
+main { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
+h1 { font-size: 32px; font-weight: 400; margin: 0 0 1rem; }
+h2 { font-size: 20px; font-weight: 600; margin: 2rem 0 0.5rem; }
+a { color: #265c83; }
+label { display: block; margin-top: 0.75rem; }
+input[type=email], input[type=password] { display: block; width: 100%; max-width: 24rem; box-sizing: border-box; padding: 0.5rem; font: inherit; border: 1px solid #c8c2b4; border-radius: 6px; background: #fff; }
+button { margin-top: 1rem; padding: 0.5rem 1rem; font: inherit; border: 0; border-radius: 6px; background: #2b2b2b; color: #faf8f3; cursor: pointer; }
+button.link { background: none; color: #265c83; padding: 0; margin: 0; text-decoration: underline; }
+button.danger { background: #b3261e; }
+.error { color: #b3261e; }
+.notice { color: #2e6b30; }
+table { border-collapse: collapse; }
+td { padding: 0.25rem 1rem 0.25rem 0; }
+form.inline { display: inline; }
+</style>
+</head>
+<body><main>
+<h1>{{.Title}}</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
+{{template "content" .}}
+</main></body>
+</html>{{end}}

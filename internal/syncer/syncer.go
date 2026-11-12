@@ -11,6 +11,9 @@ import (
 	"go.icco.me/glanced-api/internal/db"
 )
 
+// ErrUnknownUser is returned when pushing for a user that no longer exists.
+var ErrUnknownUser = errors.New("unknown user")
+
 // Page is one pull response.
 type Page struct {
 	Cards  []db.Card
@@ -31,6 +34,14 @@ func Push(ctx context.Context, g *gorm.DB, userID string, cards []db.Card, lines
 	}
 	accepted := 0
 	err := g.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var owner db.User
+		err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Where("id = ?", userID).First(&owner).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrUnknownUser
+		}
+		if err != nil {
+			return fmt.Errorf("lock user: %w", err)
+		}
 		for _, c := range cards {
 			c.UserID = userID
 			var cur db.Card

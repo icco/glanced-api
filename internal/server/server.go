@@ -16,6 +16,7 @@ import (
 	"go.icco.me/glanced-api/internal/auth"
 	"go.icco.me/glanced-api/internal/db"
 	"go.icco.me/glanced-api/internal/syncer"
+	"go.icco.me/glanced-api/internal/web"
 )
 
 const (
@@ -42,6 +43,7 @@ func New(g *gorm.DB, log *zap.Logger) http.Handler {
 		r.Post("/v1/sync/push", h.push)
 		r.Get("/v1/sync/pull", h.pull)
 	})
+	r.Mount("/", web.New(g))
 	return r
 }
 
@@ -63,7 +65,7 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		fail(w, r, http.StatusBadRequest, "invalid json")
 		return
 	}
-	token, err := auth.Login(r.Context(), h.g, in.Email, in.Password)
+	token, err := auth.LoginAgent(r.Context(), h.g, in.Email, in.Password, r.UserAgent())
 	if errors.Is(err, auth.ErrInvalidCredentials) {
 		fail(w, r, http.StatusUnauthorized, "invalid credentials")
 		return
@@ -97,6 +99,10 @@ func (h *handler) push(w http.ResponseWriter, r *http.Request) {
 	var inv *syncer.InvalidRowError
 	if errors.As(err, &inv) {
 		render.JSON(logging.FromContext(r.Context()), w, http.StatusBadRequest, map[string]string{"error": "invalid row", "id": inv.ID, "reason": inv.Reason})
+		return
+	}
+	if errors.Is(err, syncer.ErrUnknownUser) {
+		fail(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	if err != nil {

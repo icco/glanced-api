@@ -28,6 +28,12 @@ var ErrWeakPassword = errors.New("password must be at least 12 characters")
 // ErrInvalidCredentials is returned for an unknown email or a wrong password.
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
+// ErrBadSessionID is returned for a session ID that is not hex.
+var ErrBadSessionID = errors.New("bad session id")
+
+// ErrEmailTaken is returned when an account already uses the email.
+var ErrEmailTaken = errors.New("an account with that email already exists")
+
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
@@ -55,7 +61,17 @@ func CreateUser(ctx context.Context, g *gorm.DB, email, pw string) (*db.User, er
 		return nil, fmt.Errorf("user id: %w", err)
 	}
 	u := &db.User{ID: id.String(), Email: email, PasswordHash: h}
+	var n int64
+	if err := g.WithContext(ctx).Model(&db.User{}).Where("email = ?", email).Count(&n).Error; err != nil {
+		return nil, fmt.Errorf("check email: %w", err)
+	}
+	if n > 0 {
+		return nil, ErrEmailTaken
+	}
 	if err := g.WithContext(ctx).Create(u).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(err.Error(), "SQLSTATE 23505") {
+			return nil, ErrEmailTaken
+		}
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 	return u, nil
@@ -63,6 +79,11 @@ func CreateUser(ctx context.Context, g *gorm.DB, email, pw string) (*db.User, er
 
 // Login checks credentials and returns a new session token.
 func Login(ctx context.Context, g *gorm.DB, email, pw string) (string, error) {
+	return LoginAgent(ctx, g, email, pw, "")
+}
+
+// LoginAgent is Login that labels the session with the client's user agent.
+func LoginAgent(ctx context.Context, g *gorm.DB, email, pw, userAgent string) (string, error) {
 	var u db.User
 	err := g.WithContext(ctx).Where("email = ?", normalizeEmail(email)).First(&u).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -83,7 +104,7 @@ func Login(ctx context.Context, g *gorm.DB, email, pw string) (string, error) {
 		return "", fmt.Errorf("token: %w", err)
 	}
 	token := base64.RawURLEncoding.EncodeToString(raw)
-	s := db.Session{TokenHash: hashToken(token), UserID: u.ID, ExpiresAt: time.Now().Add(SessionTTL)}
+	s := db.Session{TokenHash: hashToken(token), UserID: u.ID, ExpiresAt: time.Now().Add(SessionTTL), UserAgent: truncate(userAgent, 200)}
 	if err := g.WithContext(ctx).Create(&s).Error; err != nil {
 		return "", fmt.Errorf("create session: %w", err)
 	}
@@ -96,13 +117,4 @@ func Logout(ctx context.Context, g *gorm.DB, token string) error {
 		return fmt.Errorf("delete session: %w", err)
 	}
 	return nil
-}
-
-func userForToken(ctx context.Context, g *gorm.DB, token string) (string, error) {
-	var s db.Session
-	err := g.WithContext(ctx).Where("token_hash = ? AND expires_at > ?", hashToken(token), time.Now()).First(&s).Error
-	if err != nil {
-		return "", err
-	}
-	return s.UserID, nil
 }

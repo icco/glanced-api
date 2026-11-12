@@ -199,3 +199,13 @@ func TestDatabaseDownIs500(t *testing.T) {
 		}
 	}
 }
+
+func TestWebPagesMounted(t *testing.T) {
+	ts, _ := setup(t)
+	if res := do(t, ts, http.MethodGet, "/signup", "", ""); res.code != http.StatusOK || !bytes.Contains(res.body, []byte("Create account")) {
+		t.Errorf("signup = %d", res.code)
+	}
+	if res := do(t, ts, http.MethodGet, "/healthz", "", ""); res.code != http.StatusOK {
+		t.Errorf("healthz = %d", res.code)
+	}
+}

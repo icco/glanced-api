@@ -26,8 +26,8 @@ func Middleware(g *gorm.DB) func(http.Handler) http.Handler {
 				render.JSON(log, w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 				return
 			}
-			uid, err := userForToken(r.Context(), g, token)
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			u, err := UserForToken(r.Context(), g, token)
+			if errors.Is(err, ErrInvalidCredentials) {
 				render.JSON(log, w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 				return
 			}
@@ -36,7 +36,7 @@ func Middleware(g *gorm.DB) func(http.Handler) http.Handler {
 				render.JSON(log, w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 				return
 			}
-			ctx := context.WithValue(r.Context(), ctxKey{}, uid)
+			ctx := context.WithValue(r.Context(), ctxKey{}, u.ID)
 			ctx = context.WithValue(ctx, tokenKey{}, token)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
