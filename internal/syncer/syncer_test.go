@@ -272,3 +272,12 @@ func TestConcurrentFirstPushKeepsNewest(t *testing.T) {
 		}
 	}
 }
+
+func TestDeviceTieBreakIsBytewise(t *testing.T) {
+	g := newDB(t)
+	push(t, g, alice, nil, []db.Line{line("l1", "from B", 100, "B")})
+	push(t, g, alice, nil, []db.Line{line("l1", "from a", 100, "a")})
+	if got := storedL1(t, g).Text; got != "from a" {
+		t.Errorf("text = %q, want bytewise winner \"a\"", got)
+	}
+}

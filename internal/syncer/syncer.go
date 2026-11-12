@@ -62,17 +62,35 @@ func Push(ctx context.Context, g *gorm.DB, userID string, cards []db.Card, lines
 	return accepted, nil
 }
 
-// upsert inserts row, or replaces the stored copy only when row is newer by
-// updated_at, then device_id. The check runs inside the statement, so a
-// concurrent first insert of the same row cannot overwrite a newer one.
+// upsert reserves a sequence number for a new row and stores it.
 func upsert(tx *gorm.DB, table string, row any, seq *int64) (int, error) {
-	if err := tx.Raw("SELECT nextval('glanced_seq')").Scan(seq).Error; err != nil {
+	if err := reserve(tx, seq); err != nil {
 		return 0, err
 	}
-	newer := fmt.Sprintf("excluded.updated_at > %[1]s.updated_at OR (excluded.updated_at = %[1]s.updated_at AND excluded.device_id > %[1]s.device_id)", table)
+	return store(tx, table, row)
+}
+
+func reserve(tx *gorm.DB, seq *int64) error {
+	return tx.Raw("SELECT nextval('glanced_seq')").Scan(seq).Error
+}
+
+var updatable = map[string][]string{
+	"cards": {"kind", "date", "card_signal", "updated_at", "device_id", "deleted"},
+	"lines": {"card_id", "position", "text", "signal", "migrated_to", "updated_at", "device_id", "deleted"},
+}
+
+// store inserts row with its reserved sequence, or replaces the stored copy
+// only when row is newer by updated_at, then bytewise device_id. The check
+// and a fresh sequence number are taken under the conflicting row's lock, so
+// neither a concurrent first insert nor a delayed writer can store an older
+// row or move server_seq backwards.
+func store(tx *gorm.DB, table string, row any) (int, error) {
+	set := clause.AssignmentColumns(updatable[table])
+	set = append(set, clause.Assignment{Column: clause.Column{Name: "server_seq"}, Value: gorm.Expr("nextval('glanced_seq')")})
+	newer := fmt.Sprintf(`excluded.updated_at > %[1]s.updated_at OR (excluded.updated_at = %[1]s.updated_at AND excluded.device_id COLLATE "C" > %[1]s.device_id COLLATE "C")`, table)
 	res := tx.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "id"}},
-		UpdateAll: true,
+		DoUpdates: set,
 		Where:     clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: newer}}},
 	}).Create(row)
 	if res.Error != nil {
