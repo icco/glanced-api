@@ -16,7 +16,7 @@ func Open(ctx context.Context, url string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
-	if err := g.Use(gormtracing.NewPlugin(gormtracing.WithoutMetrics())); err != nil {
+	if err := g.Use(gormtracing.NewPlugin(gormtracing.WithoutMetrics(), gormtracing.WithoutQueryVariables())); err != nil {
 		return nil, fmt.Errorf("use tracing plugin: %w", err)
 	}
 	g = g.WithContext(ctx)
