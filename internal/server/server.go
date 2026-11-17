@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.icco.me/gutil/logging"
 	"go.icco.me/gutil/render"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
@@ -44,7 +45,14 @@ func New(g *gorm.DB, log *zap.Logger) http.Handler {
 		r.Get("/v1/sync/pull", h.pull)
 	})
 	r.Mount("/", web.New(g))
-	return r
+	return otelhttp.NewHandler(r, "glanced-api", otelhttp.WithFilter(func(req *http.Request) bool {
+		switch req.URL.Path {
+		case "/healthz", "/metrics":
+			return false
+		default:
+			return true
+		}
+	}))
 }
 
 func fail(w http.ResponseWriter, r *http.Request, status int, msg string) {
