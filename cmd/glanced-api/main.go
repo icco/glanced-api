@@ -65,7 +65,7 @@ func serve(ctx context.Context, g *gorm.DB) error {
 		return fmt.Errorf("init tracing: %w", err)
 	}
 	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		if err := shutdown(shutdownCtx); err != nil {
 			log.Warnw("tracing shutdown", zap.Error(err))
