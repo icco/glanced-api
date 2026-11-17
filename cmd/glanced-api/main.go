@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"go.icco.me/gutil/logging"
+	"go.icco.me/gutil/tracing"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 
 	"go.icco.me/glanced-api/internal/auth"
@@ -58,6 +60,17 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) 
 func serve(ctx context.Context, g *gorm.DB) error {
 	log := logging.Must(logging.NewLogger("glanced-api"))
 	defer logging.Sync(log)
+	shutdown, err := tracing.Init(ctx, "glanced-api")
+	if err != nil {
+		return fmt.Errorf("init tracing: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdown(shutdownCtx); err != nil {
+			log.Warnw("tracing shutdown", zap.Error(err))
+		}
+	}()
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -71,9 +84,9 @@ func serve(ctx context.Context, g *gorm.DB) error {
 		return err
 	case <-ctx.Done():
 	}
-	shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
-	return srv.Shutdown(shutdown)
+	return srv.Shutdown(shutdownCtx)
 }
 
 func userCreate(ctx context.Context, g *gorm.DB, args []string, stdin io.Reader, stdout io.Writer) error {
