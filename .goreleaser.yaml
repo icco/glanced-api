@@ -25,12 +25,6 @@ changelog:
       order: 1
     - title: Other Changes
       order: 999
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
-      - '^chore:'
-      - '^style:'
 release:
   github:
     owner: icco
